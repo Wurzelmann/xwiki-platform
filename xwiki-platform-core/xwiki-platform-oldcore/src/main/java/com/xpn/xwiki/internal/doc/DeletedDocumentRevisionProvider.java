@@ -26,6 +26,9 @@ import javax.inject.Singleton;
 
 import org.xwiki.component.annotation.Component;
 import org.xwiki.model.reference.DocumentReference;
+import org.xwiki.model.reference.EntityReference;
+import org.xwiki.model.reference.PageReference;
+import org.xwiki.model.reference.PageReferenceResolver;
 
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.XWikiException;
@@ -47,6 +50,9 @@ public class DeletedDocumentRevisionProvider implements DocumentRevisionProvider
     @Inject
     private Provider<XWikiContext> xcontextProvider;
 
+    @Inject
+    private PageReferenceResolver<EntityReference> pageReferenceResolver;
+
     @Override
     public XWikiDocument getRevision(DocumentReference reference, String revision) throws XWikiException
     {
@@ -55,13 +61,27 @@ public class DeletedDocumentRevisionProvider implements DocumentRevisionProvider
         XWikiDeletedDocument deletedDocument = xcontext.getWiki().getDeletedDocument(Long.valueOf(revision), xcontext);
 
         // Only local the document if it matches the asked document reference
-        if (deletedDocument != null
-            && (reference == null || deletedDocument.getDocumentReference().equals(reference))) {
+        if (deletedDocument != null && areReferencesCompatible(reference, deletedDocument.getDocumentReference())) {
             return deletedDocument.restoreDocument(xcontext);
         }
 
         return null;
+    }
 
+    private boolean areReferencesCompatible(DocumentReference requestedDocRef, DocumentReference deletedDocRef)
+    {
+        boolean result;
+        if (requestedDocRef == null) {
+            result = true;
+        } else {
+            // We might be trying to access a terminal doc and the requested reference is a non-terminal doc because
+            // if the page doesn't exist we always assume it's non-terminal: so we need to compare the PageReference
+            // here.
+            PageReference requestedPageRef = this.pageReferenceResolver.resolve(requestedDocRef);
+            PageReference deletedPageRef = this.pageReferenceResolver.resolve(deletedDocRef);
+            result = requestedPageRef.equals(deletedPageRef);
+        }
+        return result;
     }
 
     @Override
